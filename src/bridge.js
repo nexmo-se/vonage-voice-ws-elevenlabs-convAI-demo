@@ -10,12 +10,10 @@ const PACE_TIMER_MS = 18; // slightly under 20 ms so packets stay ahead of real 
 const MAX_OUTBOUND_BYTES = 512 * 1024; // 512 KB audio queue cap (about 16 s)
 
 function buildConversationInitiationData(config, language) {
+  // Send minimal override - many agent configs lock all fields.
+  // Only send voice_id if explicitly set, as it's the most commonly allowed override.
   const override = { agent: {}, tts: {} };
 
-  if (config.agentPrompt) override.agent.prompt = { prompt: config.agentPrompt };
-  if (config.agentFirstMessage) override.agent.first_message = config.agentFirstMessage;
-  const agentLanguage = config.agentLanguage || language;
-  if (agentLanguage) override.agent.language = agentLanguage;
   if (config.elevenLabsVoiceId) override.tts.voice_id = config.elevenLabsVoiceId;
 
   return {

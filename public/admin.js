@@ -276,6 +276,8 @@ function addNote(key, params, ts, level) {
 //---- SSE ----
 
 let sseBadgeKey = 'badge.disconnected';
+let eventSource = null;
+let lastSeq = 0;
 
 function setBadge(key) {
   sseBadgeKey = key;
@@ -283,21 +285,88 @@ function setBadge(key) {
   sseStatusEl.className = key === 'badge.connected' ? 'badge badge-on' : 'badge badge-off';
 }
 
-function connect() {
-  const source = new EventSource('/admin/events');
+async function syncState() {
+  try {
+    const resp = await fetch(`/admin/api/state?since=${lastSeq}`, {
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (resp.status === 401) {
+      console.warn('Session expired or invalid, redirecting to login...');
+      window.location.href = '/login';
+      return;
+    }
+    if (!resp.ok) return;
+    const payload = await resp.json();
+    for (const event of payload.events || []) {
+      if (event.seq > lastSeq) lastSeq = event.seq;
+      handleEvent(event);
+    }
+  } catch (error) {
+    // Network error; retry on the next poll tick.
+    console.warn('State poll failed:', error);
+  }
+}
 
-  source.onopen = () => setBadge('badge.connected');
+function connect() {
+  if (eventSource) {
+    eventSource.close();
+  }
+
+  // Use withCredentials to send session cookie
+  const source = new EventSource('/admin/events', { withCredentials: true });
+  eventSource = source;
+
+  source.onopen = () => {
+    console.log('SSE connected, readyState:', source.readyState);
+    setBadge('badge.connected');
+  };
 
   source.onmessage = (message) => {
     try {
-      handleEvent(JSON.parse(message.data));
+      const event = JSON.parse(message.data);
+      if (event.seq > lastSeq) lastSeq = event.seq;
+      handleEvent(event);
     } catch (error) {
       console.error('Failed to parse SSE message:', error);
     }
   };
 
-  source.onerror = () => setBadge('badge.reconnecting');
+  source.onerror = (err) => {
+    console.warn('SSE error:', err, 'readyState:', source.readyState);
+    setBadge('badge.reconnecting');
+
+    // If unauthorized, likely session expired or wrong domain -> redirect to login
+    // EventSource doesn't expose status code, but we can detect by trying a fetch
+    if (source.readyState === EventSource.CLOSED) {
+      checkAuthAndRedirect();
+    } else {
+      // EventSource auto-reconnects, but force reconnect after delay if needed
+      setTimeout(() => {
+        if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+          console.log('SSE reconnecting...');
+          connect();
+        }
+      }, 3000);
+    }
+  };
 }
+
+async function checkAuthAndRedirect() {
+  try {
+    const resp = await fetch('/admin/api/state', { credentials: 'include' });
+    if (resp.status === 401) {
+      console.warn('Session expired or invalid, redirecting to login...');
+      window.location.href = '/login';
+    }
+  } catch (e) {
+    console.warn('Auth check failed:', e);
+  }
+}
+
+// Expose for debugging
+window.__sseReconnect = connect;
+window.__checkAuth = checkAuthAndRedirect;
 
 //---- language toggle ----
 
@@ -319,3 +388,10 @@ langToggleEl.addEventListener('click', () => {
 renderAll();
 setBadge('badge.disconnected');
 connect();
+
+// Reliable fallback transport: poll the state endpoint so the transcript and
+// call panel render even when SSE is buffered/blocked by proxies (e.g. the
+// trycloudflare tunnel). The seq-based dedup in handleEvent prevents duplicates
+// when both SSE and polling deliver the same event.
+syncState();
+setInterval(syncState, 1500);
