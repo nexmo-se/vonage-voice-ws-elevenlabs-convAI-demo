@@ -1,0 +1,24 @@
+# Secrets - never push
+.env
+.env.*
+!.env.example
+private.key
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+secrets.json
+
+# Dependencies
+node_modules/
+
+# Runtime data
+recordings
+*.raw
+*.log
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

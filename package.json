@@ -1,0 +1,21 @@
+{
+  "name": "vonage-voice-elevenlabs-conversationalai-demo",
+  "version": "1.0.0",
+  "description": "Vonage Voice API (PSTN/LVN) <-> ElevenLabs Conversational AI bridge with real-time speaker-separated transcript admin UI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "express-ws": "^5.0.2",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

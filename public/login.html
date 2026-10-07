@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title data-i18n="login.title">ボット管理コンソール</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body class="login-body">
+  <script>window.APP_CONFIG = {};</script>
+  <main class="login-card">
+    <h1 data-i18n="login.title">ボット管理コンソール</h1>
+    <p class="subtitle" data-i18n="login.subtitle">ログインしてライブトランスクリプトを確認します</p>
+    <div id="error" class="error hidden"></div>
+    <form method="POST" action="/login">
+      <label for="username" data-i18n="login.username">管理者ユーザー名</label>
+      <input id="username" name="username" type="text" autocomplete="username" required />
+      <label for="password" data-i18n="login.password">パスワード</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required />
+      <button type="submit" data-i18n="login.submit">ログイン</button>
+    </form>
+  </main>
+  <script src="/i18n.js"></script>
+  <script>
+    applyStaticI18n();
+    const params = new URLSearchParams(window.location.search);
+    const error = document.getElementById('error');
+    if (params.get('error') === 'credentials') {
+      error.textContent = t('login.error.credentials');
+      error.classList.remove('hidden');
+    } else if (params.get('error') === 'rate_limited') {
+      error.textContent = t('login.error.rate_limited');
+      error.classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>

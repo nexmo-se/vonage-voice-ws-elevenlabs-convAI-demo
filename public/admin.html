@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Voice Bot Admin</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <script>window.APP_CONFIG = {};</script>
+  <header class="topbar">
+    <div class="brand">Voice Bot Admin</div>
+    <div class="topbar-right">
+      <span id="sse-status" class="badge badge-off" data-i18n="badge.disconnected">未接続</span>
+      <button type="button" id="lang-toggle" class="btn-secondary" data-i18n="top.langSwitch">English</button>
+      <form method="POST" action="/logout">
+        <button type="submit" class="btn-secondary" data-i18n="top.logout">ログアウト</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <h2 data-i18n="call.title">通話状況</h2>
+        <div id="call-status" class="call-status" data-i18n="call.none">現在通話はありません</div>
+        <dl class="call-meta">
+          <dt data-i18n="call.from">発信元</dt><dd id="call-from">-</dd>
+          <dt data-i18n="call.to">着信先</dt><dd id="call-to">-</dd>
+          <dt data-i18n="call.lvn">LVN (自局番号)</dt><dd id="call-lvn">-</dd>
+          <dt data-i18n="call.uuid">UUID</dt><dd id="call-uuid" class="mono">-</dd>
+        </dl>
+      </section>
+      <section class="panel">
+        <h2 data-i18n="session.title">セッション</h2>
+        <dl class="call-meta">
+          <dt data-i18n="session.user">利用者発話</dt><dd id="count-user">0</dd>
+          <dt data-i18n="session.agent">ボット発話</dt><dd id="count-agent">0</dd>
+          <dt data-i18n="session.interruptions">割り込み</dt><dd id="count-interruption">0</dd>
+        </dl>
+      </section>
+    </aside>
+
+    <section class="transcript-panel">
+      <div class="transcript-header">
+        <h2 data-i18n="transcript.title">ライブトランスクリプト</h2>
+        <label class="autoscroll">
+          <input type="checkbox" id="autoscroll" checked />
+          <span data-i18n="transcript.autoscroll">自動スクロール</span>
+        </label>
+      </div>
+      <div id="transcript" class="transcript"></div>
+    </section>
+  </main>
+
+  <script src="/i18n.js"></script>
+  <script src="/admin.js"></script>
+</body>
+</html>
