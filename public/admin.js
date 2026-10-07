@@ -106,7 +106,14 @@ function addItem(item) {
     // transcript bounded on long calls.
     const overflow = state.items.splice(0, state.items.length - MAX_ITEMS);
     for (let i = 0; i < overflow.length && transcriptEl.firstChild; i++) {
-      transcriptEl.removeChild(transcriptEl.firstChild);
+      const firstChild = transcriptEl.firstChild;
+      // Skip the empty-state placeholder if it's still at the top.
+      if (firstChild.id === 'empty-state') {
+        firstChild.remove();
+        i--; // don't count empty-state against overflow
+        continue;
+      }
+      transcriptEl.removeChild(firstChild);
     }
   }
   appendItem(item);

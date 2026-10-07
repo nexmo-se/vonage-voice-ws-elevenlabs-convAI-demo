@@ -100,6 +100,4 @@ app.listen(config.port, () => {
 
 // Apply Vonage webhooks in the background so servers boots immediately even if
 // the Vonage API is slow or unreachable (it fails over to manual Dashboard setup).
-applyVonageWebhooks().catch((error) => {
-  console.error('Unexpected error in Vonage webhook auto-apply:', error);
-});
+applyVonageWebhooks().catch(() => {});
