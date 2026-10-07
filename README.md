@@ -58,6 +58,7 @@ cp .env.example .env
 |---|---|
 | `PORT` | Server port (default 3000) |
 | `PUBLIC_URL` | Public base URL (e.g. the cloudflared URL). Fallback order: `VONAGE_ANSWER_URL` → Host header |
+| `TRUST_PROXY` | Trust reverse proxy headers (cloudflared etc): `true` / `false` / Express-style string (`loopback`, ...). When unset, derived automatically from an HTTPS public URL (also enables Secure cookies). Keep `false` where nothing terminates TLS |
 | `VONAGE_APPLICATION_ID` | Vonage application ID. Used for webhook auto-apply |
 | `VONAGE_LVN` | LVN linked to the app (E.164). Shown in the admin UI; a mismatch with the inbound `to` number logs a warning |
 | `VONAGE_PRIVATE_KEY_PATH` | Path to the app's `private.key` (relative paths resolve from the project root). Used for JWT auth to the Vonage API |
@@ -76,6 +77,14 @@ cp .env.example .env
 | `RECORD_ALL_AUDIO` | `true` to save raw PCM to `./recordings/` |
 
 ## Running and testing (cloudflared)
+
+### 0. Unit tests
+
+```bash
+npm test
+```
+
+`node --test` verifies config / JWT / NCCO greeting switching / `conversation_config_override` / the login rate limiter / i18n parity, etc.
 
 ### 1. Start the server (first run)
 
@@ -145,6 +154,15 @@ Switches apply from the **next inbound call / conversation start** (the language
 open http://localhost:3000/login
 ```
 
+# Server-side hardening notes
+
+- **Sessions:** `express-session` uses the default **in-memory store**; all sessions are lost on restart. For multiple instances or restart tolerance, swap in a shared store (`connect-redis` / `connect-mongo`, etc.)
+- **Secure cookie:** only sent when behind TLS (`TRUST_PROXY` enabled or an HTTPS public URL is configured). Plain HTTP stays non-Secure
+- **Rate-limit IP:** with `TRUST_PROXY` enabled the `X-Forwarded-For` header is trusted, so a client could spoof its IP if nothing actually terminates TLS — keep `TRUST_PROXY=false` in that case
+- **Vonage WebSocket:** `peer_uuid` must be a UUID (`^[0-9a-f]{8}-[0-9a-f]{4}-...`); anything else is closed immediately (blocks path traversal and direct external connections)
+- **Placeholder warnings:** at startup a warning is logged if `ADMIN_PASSWORD` / `SESSION_SECRET` / `ELEVENLABS_API_KEY` still use the `.env.example` placeholder
+- **Outbound buffer:** the ElevenLabs audio queue to Vonage is capped at 512 KB (oldest audio is dropped when Vonage stalls)
+
 ## API / endpoints
 
 | Method | Path | Auth | Description |
@@ -161,10 +179,11 @@ open http://localhost:3000/login
 
 ## Security
 
-- Login: username/password from `.env`, compared with `crypto.timingSafeEqual`, per-IP rate limiting (5 failures in 15 minutes → 5-minute lockout)
-- Session: `express-session` with httpOnly / SameSite=Lax cookies; the session ID is regenerated on successful login
+- Login: username/password from `.env`, compared with `crypto.timingSafeEqual`, per-IP rate limiting (5 failures in 15 minutes → 5-minute lockout). `X-Forwarded-For` is only trusted when `TRUST_PROXY` is enabled (keep `false` without a TLS terminator, or clients can spoof their IP)
+- Session: `express-session` with httpOnly / SameSite=Lax cookies; the `Secure` flag is set when `TRUST_PROXY` is enabled. The store is in-memory (logins reset on restart — use an external store for production). The session ID is regenerated on successful login
 - `/admin*` and `/admin/events` (SSE) reject unauthenticated requests (HTML navigations redirect to `/login`, API/SSE get 401)
-- The Vonage WebSocket requires the `peer_uuid` query parameter (direct browser connections are rejected)
+- The Vonage WebSocket requires a well-formed `peer_uuid` (validated as a UUID; anything else is closed immediately). This also blocks path traversal via the recording filename
+- The ElevenLabs → Vonage audio buffer is capped at 512 KB (old audio is dropped if Vonage stalls, protecting memory)
 
 ### Pushing secrets (pre-push hook)
 

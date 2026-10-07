@@ -46,6 +46,22 @@ function optionalUrl(name) {
   return url.toString().replace(/\/+$/, '');
 }
 
+// 'true'/'false' pass through, otherwise the raw string is handed to
+// app.set('trust proxy', ...) (e.g. 'loopback', 'loopback, 172.16.0.0/12').
+function parseTrustProxy(raw, defaultTrust) {
+  if (!raw) return defaultTrust;
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return raw;
+}
+
+const PLACEHOLDER_VALUES = new Set([
+  'change-me',
+  'please-change-this-session-secret',
+  'your_elevenlabs_api_key',
+  'your_elevenlabs_agent_id',
+]);
+
 function loadConfig() {
   const config = {
     port: optionalNumber('PORT', 3000),
@@ -89,6 +105,17 @@ function loadConfig() {
     recordingsDir: path.join(__dirname, '..', 'recordings'),
   };
 
+  // Trust the proxy only when we are reached through a public HTTPS URL;
+  // otherwise requests can spoof X-Forwarded-For and bypass the login ratelimiter.
+  const behindTls =
+    config.publicUrl.startsWith('https://') ||
+    config.vonage.answerUrl.startsWith('https://') ||
+    config.vonage.eventUrl.startsWith('https://');
+  config.trustProxy = parseTrustProxy(process.env.TRUST_PROXY, behindTls);
+
+  // Send the session cookie over HTTPS only when served behind a TLS proxy.
+  config.secureCookies = config.trustProxy === true || behindTls;
+
   if (config.elevenLabsInactivitySeconds < 1 || config.elevenLabsInactivitySeconds > 180) {
     console.error('ELEVENLABS_INACTIVITY_SECONDS must be between 1 and 180');
     process.exit(1);
@@ -117,6 +144,16 @@ function loadConfig() {
   const { applicationId, answerUrl, eventUrl, apiKey, apiSecret, privateKeyPath } = config.vonage;
   const hasAuth = (apiKey && apiSecret) || privateKeyPath;
   config.vonage.applyWebhooks = Boolean(applicationId && answerUrl && eventUrl && hasAuth);
+
+  if (PLACEHOLDER_VALUES.has(config.adminPassword)) {
+    console.warn('Warning: ADMIN_PASSWORD still set to the placeholder value from .env.example.');
+  }
+  if (PLACEHOLDER_VALUES.has(config.sessionSecret)) {
+    console.warn('Warning: SESSION_SECRET still set to the placeholder value from .env.example.');
+  }
+  if (PLACEHOLDER_VALUES.has(config.elevenLabsApiKey)) {
+    console.warn('Warning: ELEVENLABS_API_KEY still set to the placeholder value from .env.example.');
+  }
 
   return config;
 }

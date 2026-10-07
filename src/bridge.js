@@ -7,10 +7,7 @@ const settings = require('./settings');
 
 const PACKET_BYTES = 640; // 20 ms of 16 kHz 16-bit mono PCM
 const PACE_TIMER_MS = 18; // slightly under 20 ms so packets stay ahead of real time
-
-function timestamp() {
-  return new Date().toISOString();
-}
+const MAX_OUTBOUND_BYTES = 512 * 1024; // 512 KB audio queue cap (about 16 s)
 
 function buildConversationInitiationData(config, language) {
   const override = { agent: {}, tts: {} };
@@ -98,6 +95,21 @@ function createBridge(config, bus) {
       outboundIndex = 0;
     }
 
+    let warnedBufferCap = false;
+
+    function appendOutbound(payload) {
+      outboundBuffer = Buffer.concat([outboundBuffer, payload]);
+      if (outboundBuffer.length > MAX_OUTBOUND_BYTES) {
+        // Vonage is stalling; drop the oldest audio to bound memory.
+        outboundBuffer = outboundBuffer.subarray(outboundBuffer.length - MAX_OUTBOUND_BYTES);
+        outboundIndex = 0;
+        if (!warnedBufferCap) {
+          warnedBufferCap = true;
+          console.warn('>>> Outbound audio buffer capped (>=512 KB); dropping oldest packets.');
+        }
+      }
+    }
+
     function closeAll() {
       if (closing) return;
       closing = true;
@@ -138,7 +150,7 @@ function createBridge(config, bus) {
       switch (data.type) {
         case 'audio': {
           const payload = Buffer.from(data.audio_event.audio_base_64, 'base64');
-          outboundBuffer = Buffer.concat([outboundBuffer, payload]);
+          appendOutbound(payload);
           break;
         }
 

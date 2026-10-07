@@ -11,6 +11,7 @@ const { createAnswerHandler } = require('./src/ncco');
 const { createBridge } = require('./src/bridge');
 const { createAdminRouter } = require('./src/routes/admin');
 const { applyWebhooks } = require('./src/vonage');
+const { isValidPeerUuid } = require('./src/uuid');
 
 const config = loadConfig();
 settings.initLanguage(config.uiLanguage);
@@ -19,7 +20,7 @@ const bus = new EventBus();
 const app = express();
 expressWs(app);
 
-app.set('trust proxy', true);
+app.set('trust proxy', config.trustProxy);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(createSessionMiddleware(config));
@@ -51,10 +52,13 @@ app.use('/', createAdminRouter(config, bus));
 app.ws('/socket', requireAuthHolder(createBridge(config, bus)));
 
 function requireAuthHolder(handler) {
-  return (ws, req, next) => {
-    // Vonage's WebSocket is not browser-session authenticated;
-    // only guard against direct browser access without peer_uuid.
-    if (!new URL(req.url, 'http://localhost').searchParams.get('peer_uuid')) {
+  // Vonage media WebSockets are not browser-session authenticated; guard against
+  // direct browser access / abuse by requiring a well-formed peer_uuid (Vonage
+  // conversation UUID). Any other client is closed immediately.
+  return (ws, req) => {
+    const peerUuid = new URL(req.url, 'http://localhost').searchParams.get('peer_uuid') || '';
+    if (!isValidPeerUuid(peerUuid)) {
+      console.warn(`>>> Rejected WebSocket with invalid peer_uuid="${peerUuid}".`);
       ws.close();
       return;
     }
@@ -91,6 +95,7 @@ applyVonageWebhooks().finally(() => {
     console.log(`Admin UI: http://localhost:${config.port}/login (language: ${settings.getLanguage()})`);
     console.log(`Answer webhook: ${config.vonage.answerUrl || `http://localhost:${config.port}/answer`}`);
     console.log(`Vonage LVN: ${config.vonage.lvn || '(not set in VONAGE_LVN)'}`);
-    console.log(`ElevenLabs agent: ${config.elevenLabsAgentId} (language: ${config.agentLanguage})`);
+    console.log(`ElevenLabs agent: ${config.elevenLabsAgentId} (language: ${config.agentLanguage || 'follows UI'})`);
+    console.log(`Sessions: in-memory store (resets on restart) | cookies: ${config.secureCookies ? 'Secure' : 'non-Secure (HTTP)'}`);
   });
 });

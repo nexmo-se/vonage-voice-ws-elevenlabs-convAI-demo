@@ -17,11 +17,23 @@ const countInterruptionEl = document.getElementById('count-interruption');
 
 const state = {
   seenSeqs: new Set(),
+  seenSeqOrder: [],
   items: [], // {kind:'utterance'|'note', ...}
   interim: null,
   counts: { user: 0, agent: 0, interruption: 0 },
   call: { active: false, from: '', to: '', uuids: new Set() },
 };
+
+// Keep the seq dedup set bounded: keep the most recent 500 seen by dropping
+// the oldest once the window grows past 1000.
+function markSeen(seq) {
+  state.seenSeqs.add(seq);
+  state.seenSeqOrder.push(seq);
+  if (state.seenSeqOrder.length > 1000) {
+    const dropped = state.seenSeqOrder.splice(0, state.seenSeqOrder.length - 500);
+    for (const droppedSeq of dropped) state.seenSeqs.delete(droppedSeq);
+  }
+}
 
 //---- rendering helpers ----
 
@@ -123,7 +135,7 @@ function clearActiveCall(callUuid) {
 
 function handleEvent(event) {
   if (event.seq && state.seenSeqs.has(event.seq)) return;
-  if (event.seq) state.seenSeqs.add(event.seq);
+  if (event.seq) markSeen(event.seq);
 
   switch (event.type) {
     case 'user_transcript': {

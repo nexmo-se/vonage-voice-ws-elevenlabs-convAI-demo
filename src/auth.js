@@ -23,6 +23,17 @@ function timingSafeEqualString(a, b) {
 function createLoginRateLimiter() {
   const attempts = new Map();
 
+  function pruneStale(now) {
+    for (const [ip, entry] of attempts) {
+      if (now - entry.firstSeen > WINDOW_MS && entry.lockedUntil <= now) {
+        attempts.delete(ip);
+      }
+    }
+  }
+
+  const pruneTimer = setInterval(() => pruneStale(Date.now()), 10 * 60 * 1000);
+  pruneTimer.unref();
+
   function getEntry(ip) {
     const now = Date.now();
     let entry = attempts.get(ip);
@@ -114,7 +125,7 @@ function createSessionMiddleware(config) {
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: false,
+      secure: Boolean(config.secureCookies),
       maxAge: 12 * 60 * 60 * 1000,
     },
   });
@@ -138,4 +149,6 @@ module.exports = {
   createAuthRouter,
   createSessionMiddleware,
   requireAuth,
+  createLoginRateLimiter,
+  timingSafeEqualString,
 };

@@ -56,6 +56,7 @@ cp .env.example .env
 |---|---|
 | `PORT` | サーバポート (既定 3000) |
 | `PUBLIC_URL` | 公開 URL (cloudflared の URL 等)。省略時は `VONAGE_ANSWER_URL` → Host ヘッダの順で導出 |
+| `TRUST_PROXY` | リバースプロキシ (cloudflared 等) を信頼するか: `true` / `false` / Express 形式の文字列 (`loopback` 等)。未指定時は公開 HTTPS URL があると自動で `true` (Secure Cookie も有効化)。TLS 終端がないなら `false` を推奨 |
 | `VONAGE_APPLICATION_ID` | Vonage アプリケーション ID。Webhook 自動設定に使用 |
 | `VONAGE_LVN` | アプリに紐付けた LVN (E.164)。管理画面に表示し、着信の `to` と不一致なら警告ログを出力 |
 | `VONAGE_PRIVATE_KEY_PATH` | アプリケーションの `private.key` のパス (相対パスはプロジェクトルート基準)。Vonage API への JWT 認証に使用 |
@@ -74,6 +75,14 @@ cp .env.example .env
 | `RECORD_ALL_AUDIO` | `true` で `./recordings/` に生 PCM を保存 |
 
 ## 起動とテスト (cloudflared)
+
+### 0. ユニットテスト
+
+```bash
+npm test
+```
+
+`node --test` で設定・JWT・NCCO 挨拶切替・`conversation_config_override`・レートリミッタ・i18n パリティ等を検証します (追加・回帰確認用)。
 
 ### 1. サーバ起動 (初回)
 
@@ -140,6 +149,23 @@ LVN 着信 → ブラウザで `https://xxxx.trycloudflare.com/login` にアク�
 open http://localhost:3000/login
 ```
 
+### 7. 自動テスト
+
+```bash
+npm test   # node --test (unit テスト、外部 API 不要)
+```
+
+起動スモークテストは `scripts/` 配下のヘルスチェックで確認できます (本番デプロイ用)。
+
+## 運用上の注意 (レビュー反映点)
+
+- **Sessions:** `express-session` を既定の **インメモリストア** で使用しています。サーバ再起動で全セッションが失われるため、複数インスタンス運用や再起動耐性が要る場合は `connect-redis`/`connect-mongo` 等のストアへ差し替えてください
+- **Secure Cookie:** HTTPS プロキシ背後 (`TRUST_PROXY` 有効 or HTTPS 公開 URL 設定時) のみ Secure Cookie が付与されます。ローカル HTTP では非 Secure (トグルは付けません)
+- **レート制限の IP:** `TRUST_PROXY` が有効なときは `X-Forwarded-For` を信用します。TLS 終端がない環境で `TRUST_PROXY=true` にするとクライアントが自 IP を偽装できるため、その場合は `false` を明示
+- **Vonage WebSocket:** `peer_uuid` は UUID 形式 (`^[0-9a-f]{8}-[0-9a-f]{4}-...`) を必須とし、不一致は即時切断します (パストラバーサル・外部からの直接接続を防止)
+- **固定値の警告:** 起動時に `ADMIN_PASSWORD` / `SESSION_SECRET` / `ELEVENLABS_API_KEY` が `.env.example` のプレースホルダのままなら警告ログを出力
+- **送信バッファ:** Vonage が停滞した際の ElevenLabs 音声バッファは 512 KB で上限 (超過時は古い音声から破棄)
+
 ## API / エンドポイント
 
 | メソッド | パス | 認証 | 説明 |
@@ -156,10 +182,11 @@ open http://localhost:3000/login
 
 ## セキュリティ
 
-- ログイン: ユーザ名/パスワードは `.env` から取得、`crypto.timingSafeEqual` でタイミングセーフ比較、ログイン失敗は IP 単位でレート制限 (5 回 / 15 分で 5 分ロック)
-- セッション: `express-session` + httpOnly / SameSite=Lax Cookie、ログイン成功時にセッション ID を再生成
+- ログイン: ユーザ名/パスワードは `.env` から取得、`crypto.timingSafeEqual` でタイミングセーフ比較、ログイン失敗は IP 単位でレート制限 (5 回 / 15 分で 5 分ロック)。`TRUST_PROXY` 有効時のみ `X-Forwarded-For` を信頼して実クライアント IP で判定 (TLS 終端がないなら `TRUST_PROXY=false` を推奨)
+- セッション: `express-session` + httpOnly / SameSite=Lax Cookie。`TRUST_PROXY` 有効時は `Secure` フラグも付与。ストアはメモリ実装 (再起動でログインが無効化されるため、本番では外部ストアを推奨)。ログイン成功時にセッション ID を再生成
 - `/admin*` および `/admin/events` (SSE) は未認証を拒否 (HTML ナビゲーションは `/login` へリダイレクト、API/SSE は 401)
-- Vonage WebSocket は `peer_uuid` パラメータ必須 (ブラウザからの直接接続は拒否)
+- Vonage WebSocket は `peer_uuid` を **UUID 形式で検証** (不一致は即切断)。録音ファイル名へのパストラバーサル遮断も兼ねる
+- ElevenLabs → Vonage の音声バッファは 512 KB 上限 (Vonage が遅延した場合、古い音声から破棄してメモリを保護)
 
 ### 秘密情報の PUSH 防止 (pre-push フック)
 
