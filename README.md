@@ -26,8 +26,24 @@ PSTN caller ──PSTN──▶ Vonage LVN ──NCCO(connect)──▶ wss://<s
 
 ### ElevenLabs agent settings (required)
 
-1. **Voice tab → TTS output format: `PCM 16000 Hz`** (must match Vonage's `audio/l16;rate=16000`)
-2. **Advanced tab → Client Events**: enable
+1. **Create an Agent in ElevenLabs Dashboard**:
+   - Go to **Conversational AI → Agents** → **Create Agent**
+   - Configure name, language, prompt, first message, etc.
+   - **Copy the Agent ID** (format: `agent_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`)
+
+2. **Get your API Key**:
+   - Go to **Profile → API Keys** → **Create API Key**
+   - **Copy the API Key** (format: `sk_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`)
+
+3. **Set credentials in `.env`**:
+   ```bash
+   ELEVENLABS_API_KEY=sk_your_actual_api_key
+   ELEVENLABS_AGENT_ID=your_actual_agent_id
+   ```
+
+4. **Voice tab → TTS output format: `PCM 16000 Hz`** (must match Vonage's `audio/l16;rate=16000`)
+
+5. **Advanced tab → Client Events**: enable
    - `audio`
    - `user_transcript`
    - `agent_response`
