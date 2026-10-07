@@ -84,7 +84,6 @@ function loadConfig() {
     agentFirstMessage: optional('AGENT_FIRST_MESSAGE'),
     // Empty = follow the admin UI language (ja/en) at conversation start
     agentLanguage: optional('AGENT_LANGUAGE'),
-    elevenLabsInactivitySeconds: optionalNumber('ELEVENLABS_INACTIVITY_SECONDS', 180),
 
     // Spoken (Vonage talk) greeting; which one is used follows the admin UI language.
     greetingTextJa: optional('GREETING_TEXT_JA', 'お電話ありがとうございます。ただいま接続いたします。'),
@@ -115,11 +114,6 @@ function loadConfig() {
 
   // Send the session cookie over HTTPS only when served behind a TLS proxy.
   config.secureCookies = config.trustProxy === true || behindTls;
-
-  if (config.elevenLabsInactivitySeconds < 1 || config.elevenLabsInactivitySeconds > 180) {
-    console.error('ELEVENLABS_INACTIVITY_SECONDS must be between 1 and 180');
-    process.exit(1);
-  }
 
   if (!['ja', 'en'].includes(config.uiLanguage)) {
     console.error(`UI_LANGUAGE must be "ja" or "en": ${config.uiLanguage}`);

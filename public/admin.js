@@ -15,6 +15,10 @@ const countUserEl = document.getElementById('count-user');
 const countAgentEl = document.getElementById('count-agent');
 const countInterruptionEl = document.getElementById('count-interruption');
 
+// Keep the rendered transcript bounded (mirrors the server-side 500-event cap):
+// drop the oldest once it grows past 1000, so DOM/memory stay flat on long calls.
+const MAX_ITEMS = 500;
+
 const state = {
   seenSeqs: new Set(),
   seenSeqOrder: [],
@@ -95,6 +99,19 @@ function appendItem(item) {
   scrollDown();
 }
 
+function addItem(item) {
+  state.items.push(item);
+  if (state.items.length > MAX_ITEMS) {
+    // Drop the oldest entries and their matching DOM nodes to keep the
+    // transcript bounded on long calls.
+    const overflow = state.items.splice(0, state.items.length - MAX_ITEMS);
+    for (let i = 0; i < overflow.length && transcriptEl.firstChild; i++) {
+      transcriptEl.removeChild(transcriptEl.firstChild);
+    }
+  }
+  appendItem(item);
+}
+
 function renderCallPanel() {
   const c = state.call;
   if (c.active) {
@@ -146,9 +163,8 @@ function handleEvent(event) {
         }
         if (event.text && event.text.trim()) {
           const item = { kind: 'utterance', speaker: 'user', text: event.text, ts: event.ts };
-          state.items.push(item);
           state.counts.user += 1;
-          appendItem(item);
+          addItem(item);
           renderCounts();
         }
       } else if (event.text || state.interim) {
@@ -171,9 +187,8 @@ function handleEvent(event) {
       }
       if (event.text && event.text.trim()) {
         const item = { kind: 'utterance', speaker: 'agent', text: event.text, ts: event.ts };
-        state.items.push(item);
         state.counts.agent += 1;
-        appendItem(item);
+        addItem(item);
         renderCounts();
       }
       break;
@@ -182,16 +197,14 @@ function handleEvent(event) {
     case 'interruption': {
       state.counts.interruption += 1;
       const item = { kind: 'note', key: 'note.interruption', ts: event.ts, level: 'warn' };
-      state.items.push(item);
-      appendItem(item);
+      addItem(item);
       renderCounts();
       break;
     }
 
     case 'dtmf': {
       const item = { kind: 'note', key: 'note.dtmf', params: { digits: event.digits }, ts: event.ts };
-      state.items.push(item);
-      appendItem(item);
+      addItem(item);
       break;
     }
 
@@ -203,8 +216,7 @@ function handleEvent(event) {
         ts: event.ts,
         level: 'error',
       };
-      state.items.push(item);
-      appendItem(item);
+      addItem(item);
       break;
     }
 
@@ -251,8 +263,7 @@ function handleEvent(event) {
 
 function addNote(key, params, ts, level) {
   const item = { kind: 'note', key, params, ts, level };
-  state.items.push(item);
-  appendItem(item);
+  addItem(item);
 }
 
 //---- SSE ----

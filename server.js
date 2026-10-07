@@ -89,13 +89,17 @@ async function applyVonageWebhooks() {
   }
 }
 
-applyVonageWebhooks().finally(() => {
-  app.listen(config.port, () => {
-    console.log(`Server listening on port ${config.port}`);
-    console.log(`Admin UI: http://localhost:${config.port}/login (language: ${settings.getLanguage()})`);
-    console.log(`Answer webhook: ${config.vonage.answerUrl || `http://localhost:${config.port}/answer`}`);
-    console.log(`Vonage LVN: ${config.vonage.lvn || '(not set in VONAGE_LVN)'}`);
-    console.log(`ElevenLabs agent: ${config.elevenLabsAgentId} (language: ${config.agentLanguage || 'follows UI'})`);
-    console.log(`Sessions: in-memory store (resets on restart) | cookies: ${config.secureCookies ? 'Secure' : 'non-Secure (HTTP)'}`);
-  });
+app.listen(config.port, () => {
+  console.log(`Server listening on port ${config.port}`);
+  console.log(`Admin UI: http://localhost:${config.port}/login (language: ${settings.getLanguage()})`);
+  console.log(`Answer webhook: ${config.vonage.answerUrl || `http://localhost:${config.port}/answer`}`);
+  console.log(`Vonage LVN: ${config.vonage.lvn || '(not set in VONAGE_LVN)'}`);
+  console.log(`ElevenLabs agent: ${config.elevenLabsAgentId} (language: ${config.agentLanguage || 'follows UI'})`);
+  console.log(`Sessions: in-memory store (resets on restart) | cookies: ${config.secureCookies ? 'Secure' : 'non-Secure (HTTP)'}`);
+});
+
+// Apply Vonage webhooks in the background so servers boots immediately even if
+// the Vonage API is slow or unreachable (it fails over to manual Dashboard setup).
+applyVonageWebhooks().catch((error) => {
+  console.error('Unexpected error in Vonage webhook auto-apply:', error);
 });

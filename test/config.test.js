@@ -77,11 +77,6 @@ test('config: invalid URL exits with code 1', () => {
   expectExit(() => loadWith({ VONAGE_ANSWER_URL: 'ftp://x' }));
 });
 
-test('config: out-of-range inactivity seconds exits with code 1', () => {
-  expectExit(() => loadWith({ ELEVENLABS_INACTIVITY_SECONDS: '0' }));
-  expectExit(() => loadWith({ ELEVENLABS_INACTIVITY_SECONDS: '999' }));
-});
-
 test('config: warns when placeholders from .env.example are still in use', () => {
   const originalWarn = console.warn;
   const warnings = [];
