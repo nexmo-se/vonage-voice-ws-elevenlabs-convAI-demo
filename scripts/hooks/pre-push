@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# pre-push hook: block pushes that would expose secret-like files or content.
+#
+# Runs on `git push` before the remote is updated. Scans committed blobs in the
+# refs being pushed and refuses the push if:
+#   1. a blob path matches scripts/hooks/path-blocklist
+#      (.env, *.env, private.key, *.key, *.pem, *.p12, *.pfx, credentials.json, ...)
+#      -- except .env.example (the safe template)
+#   2. a blob's content matches scripts/hooks/content-blocklist
+#      (private keys, API tokens, JWTs, auth tokens, ...)
+#
+# The rules are line-based grep -E patterns (BSD/macOS and GNU compatible).
+
+set -u
+
+ZEROOID="0000000000000000000000000000000000000000"
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+PATHS_FILE="$HOOK_DIR/path-blocklist"
+CONTENT_FILE="$HOOK_DIR/content-blocklist"
+
+# Hooks run from the repo top-level, but keep this cwd-independent anyway.
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 1
+cd "$REPO_ROOT" || exit 1
+
+if [ ! -f "$PATHS_FILE" ] || [ ! -f "$CONTENT_FILE" ]; then
+  echo "pre-push: missing blocking rules: $PATHS_FILE, $CONTENT_FILE" >&2
+  exit 1
+fi
+
+TMP_SCAN="$(mktemp "${TMPDIR:-/tmp}/prepush.XXXXXX")"
+TMP_ALLOWED="$(mktemp "${TMPDIR:-/tmp}/prepush_allow.XXXXXX")"
+trap 'rm -f "$TMP_SCAN" "$TMP_ALLOWED"' EXIT
+
+# Collect <blob-sha> <path> pairs from every commit in the refs being pushed.
+while read -r local_ref local_oid remote_ref remote_oid; do
+  [ -n "${local_ref:-}" ] || continue
+  # branch/tag deletion: nothing to push
+  [ "$local_oid" = "$ZEROOID" ] || [ "$local_oid" = "$remote_oid" ] && continue
+
+  if [ "$remote_oid" = "$ZEROOID" ]; then
+    range="$local_oid"
+  else
+    range="$remote_oid..$local_oid"
+  fi
+
+  git rev-list "$range" 2>/dev/null | while read -r commit; do
+    git ls-tree -r "$commit" 2>/dev/null
+  done | awk '$2 == "blob" {print $3 "\t" $4}' >> "$TMP_SCAN"
+done
+
+sort -u "$TMP_SCAN" -o "$TMP_SCAN"
+
+[ -s "$TMP_SCAN" ] || exit 0
+
+# Reject paths that are allowed above the blocklist (.env.example). Lines are <blob>\t<path>.
+grep -vE '(^|\t)\.env\.example$' "$TMP_SCAN" > "$TMP_ALLOWED"
+
+PATH_HITS="$(cut -f2 "$TMP_ALLOWED" | grep -Ef "$PATHS_FILE" | sort -u)"
+if [ -n "$PATH_HITS" ]; then
+  echo "pre-push: REFUSED - secret-like file(s) would be pushed:" >&2
+  printf '  %s\n' "$PATH_HITS" >&2
+  exit 1
+fi
+
+CONTENT_HITS=0
+while IFS=$'\t' read -r blob path; do
+  if match="$(git cat-file blob "$blob" 2>/dev/null | grep -InE -m 1 -f "$CONTENT_FILE" 2>/dev/null | head -1)"; then
+    if [ -n "$match" ]; then
+      echo "pre-push: REFUSED - secret-like content found in $path:" >&2
+      echo "  $match" >&2
+      CONTENT_HITS=$((CONTENT_HITS + 1))
+    fi
+  fi
+done < "$TMP_SCAN"
+
+if [ "$CONTENT_HITS" -gt 0 ]; then
+  exit 1
+fi
+
+exit 0

@@ -1,0 +1,12 @@
+-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----
+ssh-(rsa|ecdsa|ed25519) [A-Za-z0-9+/=]{20,}
+sk_[A-Za-z0-9]{16,}
+AKIA[0-9A-Z]{16}
+gh[pousr]_[A-Za-z0-9]{12,}
+github_pat_[A-Za-z0-9_]{20,}
+glpat-[A-Za-z0-9_-]{10,}
+xox[baprs]-[A-Za-z0-9-]{12,}
+eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}
+(^|[^A-Za-z0-9_-])[_-]?authToken(=|:)\s*[A-Za-z0-9+/=]{20,}
+AWS_SECRET_ACCESS_KEY
+BEGIN PGP PRIVATE KEY BLOCK

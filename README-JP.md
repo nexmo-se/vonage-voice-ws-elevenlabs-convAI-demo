@@ -161,6 +161,25 @@ open http://localhost:3000/login
 - `/admin*` および `/admin/events` (SSE) は未認証を拒否 (HTML ナビゲーションは `/login` へリダイレクト、API/SSE は 401)
 - Vonage WebSocket は `peer_uuid` パラメータ必須 (ブラウザからの直接接続は拒否)
 
+### 秘密情報の PUSH 防止 (pre-push フック)
+
+`scripts/hooks/pre-push` は **`git push` 時に、PUSH するコミット内の以下を検出して PUSH を拒否** します (force push・履歴からの古いコミットも含めて全走査):
+
+| 種別 | ブロック対象 |
+|---|---|
+| パス | `.env`, `*.env` (`prod.env` 等), `.env.*` (`.env.local` 等)、`private.key`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.p8`, `*.jks`, `*.keystore`, `credentials.json`, `secrets.json`, `recordings/`, `.npmrc`, `id_rsa` 等 (`scripts/hooks/path-blocklist`) |
+| 内容 | PEM/OpenSSH 秘密鍵 (例: `-----BEGIN PRIVATE KEY-----`), ElevenLabs `sk_...`, AWS `AKIA...`/`AWS_SECRET_ACCESS_KEY`, GitHub `ghp_`/`github_pat_`, GitLab `glpat-`, JWT, `authToken` (`scripts/hooks/content-blocklist`) |
+
+許可されているのは安全なテンプレート `.env.example` のみです (例外としてスキップ)。
+
+**有効化**: フックはリポジトリに同梱されています。クローン後一度だけ:
+
+```bash
+git config core.hooksPath scripts/hooks
+```
+
+(現在のリポジトリでは設定済み `git config --get core.hooksPath` で確認できます)
+
 ## 音声フォーマットメモ
 
 - Vonage ↔ サーバ: `audio/l16;rate=16000` (16 bit LE mono 16 kHz、20 ms = 640 バイト)

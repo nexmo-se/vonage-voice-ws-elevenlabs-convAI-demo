@@ -166,6 +166,25 @@ open http://localhost:3000/login
 - `/admin*` and `/admin/events` (SSE) reject unauthenticated requests (HTML navigations redirect to `/login`, API/SSE get 401)
 - The Vonage WebSocket requires the `peer_uuid` query parameter (direct browser connections are rejected)
 
+### Pushing secrets (pre-push hook)
+
+`scripts/hooks/pre-push` refuses `git push` when any blob **path or content** in the pushed commits matches a secret pattern (scans full history, including force pushes):
+
+| Kind | Blocks |
+|---|---|
+| Paths | `.env`, `*.env` (`prod.env`, ...), `.env.*` (`.env.local`, ...), `private.key`, `*.key`, `*.pem`, `*.p12`, `*.pfx`, `*.p8`, `*.jks`, `*.keystore`, `credentials.json`, `secrets.json`, `recordings/`, `.npmrc`, `id_rsa`, ... (`scripts/hooks/path-blocklist`) |
+| Content | PEM/OpenSSH private keys (`-----BEGIN PRIVATE KEY-----`, ...), ElevenLabs `sk_...`, AWS `AKIA...`/`AWS_SECRET_ACCESS_KEY`, GitHub `ghp_`/`github_pat_`, GitLab `glpat-`, JWTs, `authToken` (`scripts/hooks/content-blocklist`) |
+
+The only allowed exception is the safe template `.env.example` (skipped).
+
+**Enable**: the hook ships with the repo. After cloning, run once:
+
+```bash
+git config core.hooksPath scripts/hooks
+```
+
+(Already configured in this repo — verify with `git config --get core.hooksPath`)
+
 ## Audio format notes
 
 - Vonage ↔ server: `audio/l16;rate=16000` (16-bit LE mono 16 kHz, 20 ms = 640 bytes)

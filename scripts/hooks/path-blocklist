@@ -1,0 +1,15 @@
+(^|/)\.env$
+(^|/)[^/]*\.env$
+(^|/)\.env\.[^/]*$
+(^|/)private\.key$
+^.*\.key$
+^.*\.pem$
+^.*\.p12$
+^.*\.pfx$
+^.*\.p8$
+^.*\.jks$
+^.*\.keystore$
+(^|/)(credentials|secrets)\.json$
+(^|/)recordings/
+(^|/)\.npmrc$
+(^|/)id_(rsa|ed25519|ecdsa)$
