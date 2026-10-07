@@ -1,9 +1,10 @@
 'use strict';
 
-// Vonage conversation UUIDs are standard v4 UUIDs. Restricting the media
-// WebSocket to this format blocks direct-browser / external abuse (which also
-// makes recording filenames safe from path traversal).
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Vonage conversation UUIDs come in two formats:
+// 1. Standard UUID with hyphens: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+// 2. Vonage compact format: 32 hex chars without hyphens (e.g., 368464c5546ddfccdc682950777233df)
+// Both are accepted. Restricting to these formats blocks direct-browser / external abuse.
+const UUID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})$/i;
 
 function isValidPeerUuid(value) {
   return typeof value === 'string' && UUID_RE.test(value);

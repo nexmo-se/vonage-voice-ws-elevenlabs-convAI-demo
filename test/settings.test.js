@@ -28,8 +28,12 @@ test('settings: displayLanguage', () => {
 });
 
 test('isValidPeerUuid accepts Vonage UUIDs', () => {
+  // Standard UUID with hyphens
   assert.strictEqual(isValidPeerUuid('123e4567-e89b-12d3-a456-426614174000'), true);
   assert.strictEqual(isValidPeerUuid('123E4567-E89B-12D3-A456-426614174000'), true);
+  // Vonage compact format (32 hex chars, no hyphens)
+  assert.strictEqual(isValidPeerUuid('123e4567e89b12d3a456426614174000'), true);
+  assert.strictEqual(isValidPeerUuid('368464c5546ddfccdc682950777233df'), true);
 });
 
 test('isValidPeerUuid rejects malformed / path-traversal values', () => {
@@ -38,7 +42,6 @@ test('isValidPeerUuid rejects malformed / path-traversal values', () => {
     null,
     42,
     'not-a-uuid',
-    '123e4567e89b12d3a456426614174000',
     '../../etc/passwd',
     '123e4567-e89b-12d3-a456-426614174000/../../x',
     '123e4567-e89b-12d3-a456-4266141740000',
