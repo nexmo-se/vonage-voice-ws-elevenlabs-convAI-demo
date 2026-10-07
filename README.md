@@ -57,8 +57,8 @@ cp .env.example .env
 | Variable | Description |
 |---|---|
 | `PORT` | Server port (default 3000) |
-| `PUBLIC_URL` | Public base URL (e.g. the cloudflared URL). Fallback order: `VONAGE_ANSWER_URL` → Host header |
-| `TRUST_PROXY` | Trust reverse proxy headers (cloudflared etc): `true` / `false` / Express-style string (`loopback`, ...). When unset, derived automatically from an HTTPS public URL (also enables Secure cookies). Keep `false` where nothing terminates TLS |
+| `PUBLIC_URL` | Public base URL (e.g. the cloudflared URL). Fallback order: `VONAGE_ANSWER_URL` → `PUBLIC_URL` → Host header |
+| `TRUST_PROXY` | Trust reverse proxy headers (cloudflared etc): `true` / `false` / Express-style string (`loopback`, ...). When unset, derived automatically from an HTTPS public URL. A string value like `loopback` enables proxy trust but **does not** set Secure cookies. Keep `false` where nothing terminates TLS |
 | `VONAGE_APPLICATION_ID` | Vonage application ID. Used for webhook auto-apply |
 | `VONAGE_LVN` | LVN linked to the app (E.164). Shown in the admin UI; a mismatch with the inbound `to` number logs a warning |
 | `VONAGE_PRIVATE_KEY_PATH` | Path to the app's `private.key` (relative paths resolve from the project root). Used for JWT auth to the Vonage API |
@@ -157,8 +157,8 @@ open http://localhost:3000/login
 # Server-side hardening notes
 
 - **Sessions:** `express-session` uses the default **in-memory store**; all sessions are lost on restart. For multiple instances or restart tolerance, swap in a shared store (`connect-redis` / `connect-mongo`, etc.)
-- **Secure cookie:** only sent when behind TLS (`TRUST_PROXY` enabled or an HTTPS public URL is configured). Plain HTTP stays non-Secure
-- **Rate-limit IP:** with `TRUST_PROXY` enabled the `X-Forwarded-For` header is trusted, so a client could spoof its IP if nothing actually terminates TLS — keep `TRUST_PROXY=false` in that case
+- **Secure cookie:** only sent when behind TLS (an HTTPS public URL is configured, or `TRUST_PROXY=true` explicitly). A string value like `loopback` enables proxy trust but **does not** set Secure cookies. Plain HTTP stays non-Secure.
+- **Rate-limit IP:** `X-Forwarded-For` is trusted when the request actually comes through a TLS-terminating proxy (HTTPS public URL configured, or `TRUST_PROXY=true`). A string value like `loopback` enables proxy trust but does not prevent IP spoofing if nothing terminates TLS.
 - **Vonage WebSocket:** `peer_uuid` must be a UUID (`^[0-9a-f]{8}-[0-9a-f]{4}-...`); anything else is closed immediately (blocks path traversal and direct external connections)
 - **Placeholder warnings:** at startup a warning is logged if `ADMIN_PASSWORD` / `SESSION_SECRET` / `ELEVENLABS_API_KEY` still use the `.env.example` placeholder
 - **Outbound buffer:** the ElevenLabs audio queue to Vonage is capped at 512 KB (oldest audio is dropped when Vonage stalls)
@@ -179,8 +179,8 @@ open http://localhost:3000/login
 
 ## Security
 
-- Login: username/password from `.env`, compared with `crypto.timingSafeEqual`, per-IP rate limiting (5 failures in 15 minutes → 5-minute lockout). `X-Forwarded-For` is only trusted when `TRUST_PROXY` is enabled (keep `false` without a TLS terminator, or clients can spoof their IP)
-- Session: `express-session` with httpOnly / SameSite=Lax cookies; the `Secure` flag is set when `TRUST_PROXY` is enabled. The store is in-memory (logins reset on restart — use an external store for production). The session ID is regenerated on successful login
+- Login: username/password from `.env`, compared with `crypto.timingSafeEqual`, per-IP rate limiting (5 failures in 15 minutes → 5-minute lockout). `X-Forwarded-For` is trusted only when the request comes via a TLS-terminating proxy (HTTPS public URL configured, or `TRUST_PROXY=true`). A string like `loopback` enables proxy trust but does not prevent spoofing if nothing terminates TLS.
+- Session: `express-session` with httpOnly / SameSite=Lax cookies; the `Secure` flag is set only when behind TLS (HTTPS public URL configured, or `TRUST_PROXY=true` explicitly). A string value like `loopback` does not set Secure. The store is in-memory (logins reset on restart — use an external store for production). The session ID is regenerated on successful login
 - `/admin*` and `/admin/events` (SSE) reject unauthenticated requests (HTML navigations redirect to `/login`, API/SSE get 401)
 - The Vonage WebSocket requires a well-formed `peer_uuid` (validated as a UUID; anything else is closed immediately). This also blocks path traversal via the recording filename
 - The ElevenLabs → Vonage audio buffer is capped at 512 KB (old audio is dropped if Vonage stalls, protecting memory)
