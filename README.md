@@ -1,6 +1,6 @@
 # Vonage Voice API × ElevenLabs Conversational AI Demo
 
-A single Node.js server that bridges an inbound PSTN call (Vonage LVN) → Voice API WebSocket media streaming → an ElevenLabs conversational AI agent, and shows a **speaker-separated (User / Bot)** transcript in a session-authenticated admin UI in real time (SSE).
+A single Node.js server that bridges an inbound PSTN call (Vonage LVN) → Voice API WebSocket media streaming → an ElevenLabs conversational AI agent, and shows a **speaker-separated (User / Bot)** transcript in a session-authenticated admin UI in real time (SSE + polling fallback).
 
 Japanese documentation: [README-JP.md](./README-JP.md)
 
@@ -49,6 +49,8 @@ PSTN caller ──PSTN──▶ Vonage LVN ──NCCO(connect)──▶ wss://<s
    - `agent_response`
    - `interruption`
 
+6. **Conversation config lives in the dashboard**: the agent's prompt, first message, and language are defined on the Agent. They **cannot** be overridden per call (ElevenLabs rejects them with close code `1008`), so the bridge sends no `conversation_config_override` other than `ELEVENLABS_VOICE_ID` when set
+
 ### Vonage application settings
 
 Two ways to configure the webhooks:
@@ -84,7 +86,7 @@ cp .env.example .env
 | `ELEVENLABS_API_KEY` | ElevenLabs API key (required) |
 | `ELEVENLABS_AGENT_ID` | Agent ID (required) |
 | `ELEVENLABS_VOICE_ID` | Optional (uses the agent's default voice) |
-| `AGENT_PROMPT` / `AGENT_FIRST_MESSAGE` / `AGENT_LANGUAGE` | Override via `conversation_config_override`. Leave `AGENT_LANGUAGE` empty to follow the admin UI language (ja/en) |
+| `AGENT_PROMPT` / `AGENT_FIRST_MESSAGE` / `AGENT_LANGUAGE` | **Inert** (kept for backwards compatibility, not sent). ElevenLabs agents lock these fields and reject overrides (close code `1008`). Configure the prompt / first message / language in the ElevenLabs dashboard instead |
 | `GREETING_TEXT_JA` / `GREETING_TEXT_EN` | Spoken greeting (Vonage `talk`) played before the WebSocket connects. JA/EN is selected by the admin UI language (empty = skip) |
 | `GREETING_LANGUAGE` | Force the talk voice language (e.g. `ja-JP` / `en-US`). Empty = follow the admin UI language |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Admin UI login credentials (required) |
@@ -150,6 +152,8 @@ Call the LVN → open `https://xxxx.trycloudflare.com/login` in a browser → lo
 
 The admin UI defaults to Japanese; use the toggle in the top bar to switch to English (`UI_LANGUAGE` changes the default).
 
+> **Behind the tunnel:** the dashboard updates via SSE plus a **1.5 s polling fallback** (`GET /admin/api/state?since=`), so the transcript keeps updating even when a proxy (e.g. trycloudflare) buffers or blocks the SSE stream. The cloudflared URL changes on **every tunnel restart** — session cookies are host-bound, so **open `/login` at the new URL and log in again** each time.
+
 ### Language switching (JA / EN)
 
 The JA/EN toggle in the top bar switches the **server-wide language**, not just the UI text:
@@ -159,7 +163,7 @@ The JA/EN toggle in the top bar switches the **server-wide language**, not just 
 | Frontend | Admin UI strings (data-i18n; choice remembered per browser) |
 | Backend | Persisted via `POST /admin/api/language`. A `language_changed` event is broadcast over SSE to all browsers and shown as a transcript note |
 | Read-aloud (Vonage) | The inbound `talk` greeting is chosen from `GREETING_TEXT_JA` / `GREETING_TEXT_EN`, and the voice language switches between `ja-JP` / `en-US` |
-| Read-aloud (ElevenLabs) | On conversation start the current language is sent as `conversation_config_override.agent.language` (an explicitly set `AGENT_LANGUAGE` takes precedence) |
+| Read-aloud (ElevenLabs) | The agent's language is fixed in the ElevenLabs dashboard (overrides are rejected). Only `ELEVENLABS_VOICE_ID` is sent to the agent if set |
 
 Switches apply from the **next inbound call / conversation start** (the language is fixed for the duration of a call).
 
@@ -175,9 +179,10 @@ open http://localhost:3000/login
 - **Sessions:** `express-session` uses the default **in-memory store**; all sessions are lost on restart. For multiple instances or restart tolerance, swap in a shared store (`connect-redis` / `connect-mongo`, etc.)
 - **Secure cookie:** only sent when behind TLS (an HTTPS public URL is configured, or `TRUST_PROXY=true` explicitly). A string value like `loopback` enables proxy trust but **does not** set Secure cookies. Plain HTTP stays non-Secure.
 - **Rate-limit IP:** `X-Forwarded-For` is trusted when the request actually comes through a TLS-terminating proxy (HTTPS public URL configured, or `TRUST_PROXY=true`). A string value like `loopback` enables proxy trust but does not prevent IP spoofing if nothing terminates TLS.
-- **Vonage WebSocket:** `peer_uuid` must be a UUID (`^[0-9a-f]{8}-[0-9a-f]{4}-...`); anything else is closed immediately (blocks path traversal and direct external connections)
+- **Vonage WebSocket:** `peer_uuid` must be a well-formed Vonage conversation UUID — a hyphenated UUID *or* Vonage's compact 32-char hex form; anything else is closed immediately (blocks path traversal and direct external connections)
 - **Placeholder warnings:** at startup a warning is logged if `ADMIN_PASSWORD` / `SESSION_SECRET` / `ELEVENLABS_API_KEY` still use the `.env.example` placeholder
 - **Outbound buffer:** the ElevenLabs audio queue to Vonage is capped at 512 KB (oldest audio is dropped when Vonage stalls)
+- **Admin UI transport:** SSE plus a 1.5 s polling fallback (`/admin/api/state?since=`); the `seenSeqs` dedup prevents double-render when both deliver the same event
 
 ## API / endpoints
 
@@ -191,14 +196,14 @@ open http://localhost:3000/login
 | GET | `/admin` | session | Admin UI |
 | GET/POST | `/admin/api/language` | session | Get / switch the current language (`{"language":"ja"}` or `"en"`); broadcasts `language_changed` over SSE |
 | GET | `/admin/events` | session | Transcript SSE (history replay + live) |
-| GET | `/admin/api/state` | session | Event history as JSON |
+| GET | `/admin/api/state[?since=seq]` | session | Event history as JSON (returns only newer events when `since=` is set; used by the polling fallback) |
 
 ## Security
 
 - Login: username/password from `.env`, compared with `crypto.timingSafeEqual`, per-IP rate limiting (5 failures in 15 minutes → 5-minute lockout). `X-Forwarded-For` is trusted only when the request comes via a TLS-terminating proxy (HTTPS public URL configured, or `TRUST_PROXY=true`). A string like `loopback` enables proxy trust but does not prevent spoofing if nothing terminates TLS.
 - Session: `express-session` with httpOnly / SameSite=Lax cookies; the `Secure` flag is set only when behind TLS (HTTPS public URL configured, or `TRUST_PROXY=true` explicitly). A string value like `loopback` does not set Secure. The store is in-memory (logins reset on restart — use an external store for production). The session ID is regenerated on successful login
 - `/admin*` and `/admin/events` (SSE) reject unauthenticated requests (HTML navigations redirect to `/login`, API/SSE get 401)
-- The Vonage WebSocket requires a well-formed `peer_uuid` (validated as a UUID; anything else is closed immediately). This also blocks path traversal via the recording filename
+- The Vonage WebSocket requires a well-formed `peer_uuid` (a hyphenated UUID or Vonage's compact 32-char form; anything else is closed immediately). This also blocks path traversal via the recording filename
 - The ElevenLabs → Vonage audio buffer is capped at 512 KB (old audio is dropped if Vonage stalls, protecting memory)
 
 ### Pushing secrets (pre-push hook)
