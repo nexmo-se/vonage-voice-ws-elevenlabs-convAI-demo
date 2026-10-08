@@ -100,8 +100,14 @@ function createBridge(config, bus) {
     function appendOutbound(payload) {
       outboundBuffer = Buffer.concat([outboundBuffer, payload]);
       if (outboundBuffer.length > MAX_OUTBOUND_BYTES) {
-        // Vonage is stalling; drop the oldest audio to bound memory.
-        outboundBuffer = outboundBuffer.subarray(outboundBuffer.length - MAX_OUTBOUND_BYTES);
+        // Vonage is stalling; keep only unsent data, capped at MAX_OUTBOUND_BYTES.
+        // This avoids re-sending audio that was already sent (between old outboundIndex and new buffer start).
+        const unsent = outboundBuffer.subarray(outboundIndex);
+        if (unsent.length > MAX_OUTBOUND_BYTES) {
+          outboundBuffer = unsent.subarray(unsent.length - MAX_OUTBOUND_BYTES);
+        } else {
+          outboundBuffer = unsent;
+        }
         outboundIndex = 0;
         if (!warnedBufferCap) {
           warnedBufferCap = true;
