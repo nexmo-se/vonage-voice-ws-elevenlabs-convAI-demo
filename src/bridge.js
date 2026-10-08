@@ -89,6 +89,13 @@ function createBridge(config, bus) {
       }
     }, PACE_TIMER_MS);
 
+    // Keepalive ping to ElevenLabs to detect dead connections early
+    const elevenLabsPingTimer = setInterval(() => {
+      if (elevenLabsOpen && elevenLabsWs.readyState === WebSocket.OPEN) {
+        elevenLabsWs.send(JSON.stringify({ type: 'ping', event_id: Date.now() }));
+      }
+    }, 20000);
+
     function clearOutbound() {
       outboundBuffer = Buffer.alloc(0);
       outboundIndex = 0;
@@ -120,6 +127,7 @@ function createBridge(config, bus) {
       if (closing) return;
       closing = true;
       clearInterval(paceTimer);
+      clearInterval(elevenLabsPingTimer);
 
       if (elevenLabsOpen || elevenLabsWs.readyState === WebSocket.OPEN) {
         try {
@@ -265,11 +273,12 @@ function createBridge(config, bus) {
 
     elevenLabsWs.on('close', (code, reason) => {
       elevenLabsOpen = false;
-      console.log(`>>> ElevenLabs WebSocket closed: ${code} ${reason.toString()}`);
+      const reasonStr = reason && reason.length ? reason.toString() : '(empty)';
+      console.log(`>>> ElevenLabs WebSocket closed: code=${code} reason="${reasonStr}" wasClean=${elevenLabsWs._socket ? !elevenLabsWs._socket.destroyed : 'unknown'}`);
       if (vonageOpen) {
         clearOutbound();
         try {
-          ws.close();
+          ws.close(1001, 'ElevenLabs disconnected');
         } catch (error) {
           /* noop */
         }
@@ -319,9 +328,10 @@ function createBridge(config, bus) {
       }
     });
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
       vonageOpen = false;
-      console.log('>>> Vonage WebSocket closed');
+      const reasonStr = reason && reason.length ? reason.toString() : '(empty)';
+      console.log(`>>> Vonage WebSocket closed: code=${code} reason="${reasonStr}" wasClean=${ws._socket ? !ws._socket.destroyed : 'unknown'}`);
       bus.publish({
         type: 'call_event',
         call_event: 'bridge_disconnected',
