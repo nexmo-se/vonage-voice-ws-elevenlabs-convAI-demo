@@ -45,6 +45,7 @@ function createBridge(config, bus) {
 
     let outboundBuffer = Buffer.alloc(0);
     let outboundIndex = 0;
+    let ignoreAudioUntilNextResponse = false;
 
     const recordPath = config.recordAllAudio
       ? {
@@ -91,6 +92,7 @@ function createBridge(config, bus) {
     function clearOutbound() {
       outboundBuffer = Buffer.alloc(0);
       outboundIndex = 0;
+      ignoreAudioUntilNextResponse = true;
     }
 
     let warnedBufferCap = false;
@@ -147,6 +149,10 @@ function createBridge(config, bus) {
 
       switch (data.type) {
         case 'audio': {
+          if (ignoreAudioUntilNextResponse) {
+            // Discard audio from the interrupted response
+            break;
+          }
           const payload = Buffer.from(data.audio_event.audio_base_64, 'base64');
           appendOutbound(payload);
           break;
@@ -167,6 +173,8 @@ function createBridge(config, bus) {
         }
 
         case 'agent_response': {
+          // New agent response starts; allow audio again after interruption
+          ignoreAudioUntilNextResponse = false;
           const text = data.agent_response_event.agent_response;
           console.log(`>>> [bot] ${text}`);
           bus.publish({
@@ -190,6 +198,14 @@ function createBridge(config, bus) {
             type: 'interruption',
             call_uuid: peerUuid,
           });
+          break;
+        }
+
+        case 'agent_response_correction': {
+          // Agent corrected its response (e.g., after user interruption).
+          // Treat like a new response: allow audio again.
+          ignoreAudioUntilNextResponse = false;
+          console.log('>>> agent_response_correction: allowing new audio');
           break;
         }
 
